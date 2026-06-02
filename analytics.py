@@ -48,36 +48,43 @@ def extract_skills(text: str) -> list[str]:
     return found
 
 
+def _safe_float(s: str) -> Optional[float]:
+    try:
+        v = float(re.sub(r"\s+", "", s or ""))
+        return v if v > 0 else None
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_salary_usd(text: str) -> Optional[float]:
     if not text:
         return None
+    text = str(text)
+    try:
+        # K notation: $80K, 100k-150k
+        k_vals = [_safe_float(x) for x in re.findall(r"\$?([\d.]+)\s*[Kk]", text)]
+        k_vals = [x * 1000 for x in k_vals if x]
+        if k_vals:
+            return round(sum(k_vals) / len(k_vals))
 
-    # K notation: $80K, 100k-150k
-    k_vals = re.findall(r"\$?([\d.]+)\s*[Kk]", text)
-    if k_vals:
-        nums = [float(x) * 1000 for x in k_vals]
-        return sum(nums) / len(nums)
+        # RUB → annual USD (1 USD ≈ 90 RUB)
+        if any(x in text for x in ("₽", "руб", "RUB", "rub")):
+            clean = [_safe_float(re.sub(r"\s+", "", n)) for n in re.findall(r"[\d\s]+", text)]
+            clean = [x for x in clean if x and x > 100]
+            if clean:
+                avg = sum(clean) / len(clean)
+                monthly = avg if avg < 500_000 else avg / 12
+                return round(monthly / 90 * 12)
 
-    # RUB monthly → annual USD (1 USD ≈ 90 RUB)
-    if any(x in text for x in ("₽", "руб", "RUB", "rub")):
-        nums = re.findall(r"[\d\s]+", text)
-        clean = [float(n.replace(" ", "")) for n in nums if n.strip() and float(n.replace(" ", "")) > 0]
-        clean = [x for x in clean if x > 100]
-        if clean:
-            avg = sum(clean) / len(clean)
-            monthly = avg if avg < 500_000 else avg / 12
-            return round(monthly / 90 * 12)
-
-    # Monthly indicator
-    is_monthly = bool(re.search(r"\b(mo|month|мес)\b", text, re.I))
-
-    nums = re.findall(r"[\d,]+", text)
-    vals = [float(n.replace(",", "")) for n in nums if float(n.replace(",", "")) > 1000]
-    if not vals:
+        is_monthly = bool(re.search(r"\b(mo|month|мес)\b", text, re.I))
+        vals = [_safe_float(n.replace(",", "")) for n in re.findall(r"[\d,]+", text)]
+        vals = [x for x in vals if x and x > 1000]
+        if not vals:
+            return None
+        avg = sum(vals) / len(vals)
+        return round(avg * 12 if is_monthly else avg)
+    except Exception:
         return None
-
-    avg = sum(vals) / len(vals)
-    return round(avg * 12 if is_monthly else avg)
 
 
 def dedup(vacancies: list[Vacancy]) -> list[Vacancy]:

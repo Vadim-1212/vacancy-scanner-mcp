@@ -21,6 +21,7 @@ import sources.jobicy as _jobicy
 import sources.habr as _habr
 import sources.adzuna as _adzuna
 import sources.jsearch as _jsearch
+import sources.custom as _custom
 
 from analytics import build_skill_report, build_salary_report, score_candidate as _score_candidate, dedup
 from sources import close_client
@@ -49,28 +50,49 @@ _SOURCE_MAP = {
 _DEFAULT_SOURCES = ["hh", "himalayas", "remoteok", "arbeitnow", "jobicy", "habr"]
 
 
+def _all_sources() -> list[str]:
+    """Built-in defaults + any configured custom sources."""
+    custom_names = list(_custom.load_configs().keys())
+    return _DEFAULT_SOURCES + [n for n in custom_names if n not in _DEFAULT_SOURCES]
+
+
 async def _gather_vacancies(
     query: str,
     sources: list[str],
     limit: int,
     remote_only: bool,
 ) -> tuple[list, list[str], list[str]]:
-    per_source = max(limit // len(sources), 10)
+    per_source = max(limit // max(len(sources), 1), 10)
 
     async def fetch_one(name: str):
+        # Built-in source
         mod = _SOURCE_MAP.get(name)
-        if not mod:
-            return name, [], f"Unknown source: {name}"
-        try:
-            result = await asyncio.wait_for(
-                mod.search(query, limit=per_source, remote_only=remote_only),
-                timeout=30,
-            )
-            return name, result, None
-        except asyncio.TimeoutError:
-            return name, [], "timeout"
-        except Exception as e:
-            return name, [], str(e)
+        if mod:
+            try:
+                result = await asyncio.wait_for(
+                    mod.search(query, limit=per_source, remote_only=remote_only),
+                    timeout=30,
+                )
+                return name, result, None
+            except asyncio.TimeoutError:
+                return name, [], "timeout"
+            except Exception as e:
+                return name, [], str(e)
+
+        # Custom source
+        if name in _custom.load_configs():
+            try:
+                result = await asyncio.wait_for(
+                    _custom.search(name, query, limit=per_source, remote_only=remote_only),
+                    timeout=30,
+                )
+                return name, result, None
+            except asyncio.TimeoutError:
+                return name, [], "timeout"
+            except Exception as e:
+                return name, [], str(e)
+
+        return name, [], f"Unknown source: {name}"
 
     outcomes = await asyncio.gather(*[fetch_one(s) for s in sources])
 
@@ -268,7 +290,183 @@ async def top_hiring_companies(
     }
 
 
-# ─── Tool 6: check_sources ─────────────────────────────────────────────────────
+# ─── Tool 6: list_sources ──────────────────────────────────────────────────────
+
+@mcp.tool()
+def list_sources() -> dict:
+    """List all available job sources: built-in and custom ones added via add_source.
+
+    Returns:
+        Built-in sources (always available), custom sources (user-defined),
+        and which optional sources have credentials configured.
+    """
+    custom = _custom.load_configs()
+    return {
+        "builtin": {
+            "hh":        {"desc": "HH.ru — Russia/CIS",                   "auth": "token", "configured": bool(_hh.token_preview() != "not set")},
+            "himalayas": {"desc": "Himalayas — Remote global",             "auth": "none",  "configured": True},
+            "remoteok":  {"desc": "RemoteOK — Remote global",              "auth": "none",  "configured": True},
+            "arbeitnow": {"desc": "Arbeitnow — Europe",                    "auth": "none",  "configured": True},
+            "jobicy":    {"desc": "Jobicy — Remote global",                "auth": "none",  "configured": True},
+            "habr":      {"desc": "Habr Career RSS — Russia IT",           "auth": "none",  "configured": True},
+            "adzuna":    {"desc": "Adzuna — US/EU/AU/CA (optional)",       "auth": "api_key", "configured": bool(_adzuna._APP_ID)},
+            "jsearch":   {"desc": "JSearch — LinkedIn+Indeed+Google Jobs", "auth": "api_key", "configured": bool(_jsearch._API_KEY)},
+        },
+        "custom": {
+            name: {
+                "display_name": cfg.get("display_name", name),
+                "url": cfg.get("url", ""),
+                "type": cfg.get("type", "json_api"),
+                "auth_type": cfg.get("auth_type", "none"),
+            }
+            for name, cfg in custom.items()
+        },
+        "total": 8 + len(custom),
+    }
+
+
+# ─── Tool 7: add_source ────────────────────────────────────────────────────────
+
+@mcp.tool()
+def add_source(
+    name: str,
+    url: str,
+    source_type: str = "json_api",
+    display_name: str = "",
+    query_param: str = "q",
+    limit_param: str = "limit",
+    response_items_path: str = "",
+    field_title: str = "title",
+    field_company: str = "company",
+    field_url: str = "url",
+    field_description: str = "description",
+    field_salary: str = "salary",
+    field_skills: str = "skills",
+    field_remote: str = "remote",
+    field_location: str = "location",
+    always_remote: bool = False,
+    auth_type: str = "none",
+    auth_key_name: str = "",
+    auth_key_value: str = "",
+    auth_env_var: str = "",
+    extra_headers: dict | None = None,
+    remote_param: str = "",
+    remote_param_value: str = "true",
+    extra_query_params: dict | None = None,
+) -> dict:
+    """Add a new job board source to the scanner. Works for any REST JSON API or RSS feed.
+    The source is saved to custom_sources.json and immediately available in all tools.
+
+    Args:
+        name: Unique identifier, e.g. "weworkremotely" (no spaces).
+        url: Base URL of the API or RSS feed. Use {query} and {limit} as placeholders in the URL
+             (for RSS) or in extra_query_params (for JSON APIs).
+        source_type: "json_api" or "rss".
+        display_name: Human-readable name shown in reports.
+        query_param: Query parameter name for the search term, e.g. "q", "search", "keywords".
+        limit_param: Query parameter name for result count, e.g. "limit", "per_page", "count".
+        response_items_path: Dot-notation path to the jobs array in the JSON response,
+                             e.g. "data", "jobs", "results.items". Leave empty if root is the array.
+        field_title: JSON field name for job title, e.g. "title", "job_title", "position".
+        field_company: Field for company name. Supports dot notation: "employer.name".
+        field_url: Field for application URL.
+        field_description: Field for job description text.
+        field_salary: Field for salary (text or number), e.g. "salary", "compensation".
+        field_skills: Field for skills list (array of strings), e.g. "tags", "required_skills".
+        field_remote: Boolean field for remote flag, e.g. "is_remote", "remote".
+        field_location: Field for location string, e.g. "location", "city".
+        always_remote: Set True if this board only lists remote jobs (no per-job remote field needed).
+        auth_type: Authentication method: "none", "bearer", "api_key_header", "api_key_query", "basic".
+        auth_key_name: Header name (for api_key_header/basic) or query param name (for api_key_query).
+        auth_key_value: The key/token value. Leave empty and use auth_env_var instead for security.
+        auth_env_var: Environment variable name to read the auth value from, e.g. "MYBOARD_API_KEY".
+        extra_headers: Additional static headers as dict, e.g. {"User-Agent": "Mozilla/5.0"}.
+        remote_param: Query param to filter remote jobs, e.g. "remote", "is_remote".
+        remote_param_value: Value for remote_param, default "true".
+        extra_query_params: Additional static query params always added to requests.
+
+    Returns:
+        Confirmation with the saved config and a test result.
+
+    Examples:
+        # WeWorkRemotely RSS:
+        add_source(name="wwr", url="https://weworkremotely.com/remote-jobs.rss", source_type="rss",
+                   display_name="We Work Remotely", always_remote=True)
+
+        # Generic JSON board with API key:
+        add_source(name="myboard", url="https://api.myboard.com/jobs", query_param="search",
+                   response_items_path="data.jobs", field_title="job_title",
+                   field_company="employer.name", auth_type="api_key_query",
+                   auth_key_name="api_key", auth_env_var="MYBOARD_API_KEY")
+    """
+    if not name.replace("_", "").replace("-", "").isalnum():
+        return {"error": "name must contain only letters, digits, underscores, hyphens"}
+    if name in _SOURCE_MAP:
+        return {"error": f"'{name}' is a built-in source and cannot be overridden"}
+
+    cfg: dict = {
+        "name": name,
+        "display_name": display_name or name,
+        "url": url,
+        "type": source_type,
+        "query_params": {
+            query_param: "{query}",
+            limit_param: "{limit}",
+        },
+        "response_items_path": response_items_path,
+        "field_map": {
+            "title":       field_title,
+            "company":     field_company,
+            "url":         field_url,
+            "description": field_description,
+            "salary":      field_salary,
+            "skills":      field_skills,
+            "remote":      field_remote,
+            "location":    field_location,
+        },
+        "always_remote": always_remote,
+        "auth_type":     auth_type,
+        "auth_key_name": auth_key_name,
+        "auth_key_value": auth_key_value,
+        "auth_env_var":  auth_env_var,
+        "extra_headers": extra_headers or {},
+        "remote_param":  remote_param,
+        "remote_param_value": remote_param_value,
+    }
+    if extra_query_params:
+        cfg["query_params"].update(extra_query_params)
+
+    _custom.add_config(cfg)
+    return {
+        "status": "added",
+        "name": name,
+        "config": cfg,
+        "hint": f"Source '{name}' is now available. Run search_vacancies with sources=['{name}'] to test.",
+    }
+
+
+# ─── Tool 8: remove_source ─────────────────────────────────────────────────────
+
+@mcp.tool()
+def remove_source(name: str) -> dict:
+    """Remove a custom source added via add_source.
+    Built-in sources (hh, himalayas, remoteok, etc.) cannot be removed.
+
+    Args:
+        name: Source identifier to remove, as shown in list_sources.
+
+    Returns:
+        Confirmation or error if source not found.
+    """
+    if name in _SOURCE_MAP:
+        return {"error": f"'{name}' is a built-in source and cannot be removed"}
+    ok = _custom.remove_config(name)
+    if ok:
+        return {"status": "removed", "name": name}
+    return {"error": f"Source '{name}' not found in custom sources"}
+
+
+# ─── Tool 9: check_sources ──────────────────────────────────────────────────────
 
 # Minimal probes per source: (url, params, extra_headers)
 _SOURCE_PROBES: dict[str, tuple[str, dict, dict]] = {
