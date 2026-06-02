@@ -14,7 +14,7 @@ from analytics import extract_skills, parse_salary_usd
 _CONFIG_PATH = Path(__file__).parent.parent / "custom_sources.json"
 
 
-# ─── Config persistence ────────��───────────────────────────────────────────────
+# ─── Config persistence ───────────────────────────────────────────────────────
 
 def load_configs() -> dict[str, dict]:
     if _CONFIG_PATH.exists():
@@ -120,7 +120,7 @@ def _build_vacancy(item: dict, cfg: dict, source_name: str) -> Vacancy | None:
     )
 
 
-# ─── Auth builder ────��──────────────────────────────���──────────────────────────
+# ─── Auth builder ─────────────────────────────────────────────────────────────
 
 def _build_auth(cfg: dict) -> tuple[dict, dict]:
     """Returns (extra_headers, extra_params)."""
@@ -231,7 +231,7 @@ async def _search_rss(cfg: dict, query: str, limit: int, remote_only: bool) -> l
     return results
 
 
-# ─── Public search entry point ─────────���───────────────────────────────────────
+# ─── Public search entry point ────────────────────────────────────────────────
 
 async def search(
     name: str,

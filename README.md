@@ -2,7 +2,7 @@
 
 Multi-source job market intelligence server for Claude and other MCP-compatible AI agents.
 
-Aggregates vacancies from **HH.ru, Himalayas, RemoteOK, Arbeitnow, Jobicy, Habr Career** (+ optional Adzuna and JSearch). Six sources work out of the box with zero API keys.
+Aggregates vacancies from **9 sources out of the box** — HH.ru, Himalayas, RemoteOK, Arbeitnow, Jobicy, Habr Career, TrudVsem, WeWorkRemotely, Djinni — plus optional Adzuna and JSearch. Most sources require zero API keys.
 
 ## Tools
 
@@ -53,6 +53,9 @@ Add to your `mcp.json` / `claude_desktop_config.json`:
 | Arbeitnow | None | Europe |
 | Jobicy | None | Remote global |
 | Habr Career RSS | None | Russia IT |
+| TrudVsem.ru | None | Russia (government portal) |
+| WeWorkRemotely | None | Remote global |
+| Djinni.co | None | Ukraine / Eastern Europe IT |
 | Adzuna | Free key ([developer.adzuna.com](https://developer.adzuna.com/signup)) | US / EU / AU |
 | JSearch | Free key ([RapidAPI](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch)) | LinkedIn + Indeed + Google Jobs |
 

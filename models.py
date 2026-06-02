@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 
@@ -10,7 +10,7 @@ class Vacancy(BaseModel):
     remote: bool = False
     salary_text: Optional[str] = None
     salary_usd: Optional[float] = None
-    skills: list[str] = []
+    skills: list[str] = Field(default_factory=list)
     description: str = ""
     location: Optional[str] = None
 
