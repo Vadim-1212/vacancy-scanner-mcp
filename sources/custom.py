@@ -3,9 +3,12 @@ Generic source engine — runs any job board configured via add_source tool.
 Configs are persisted to custom_sources.json next to this package.
 """
 import json
+import logging
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 from sources import SEMAPHORE, get_client
 from models import Vacancy
@@ -20,8 +23,8 @@ def load_configs() -> dict[str, dict]:
     if _CONFIG_PATH.exists():
         try:
             return json.loads(_CONFIG_PATH.read_text())
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("failed to load custom_sources.json: %s", e)
     return {}
 
 
@@ -173,7 +176,8 @@ async def _search_json(cfg: dict, query: str, limit: int, remote_only: bool) -> 
             r = await client.get(cfg["url"], params=params, headers=extra_headers, timeout=15)
             r.raise_for_status()
             data = r.json()
-    except Exception:
+    except Exception as e:
+        log.warning("custom source %s fetch failed: %s", cfg.get("name"), e)
         return []
 
     # Navigate to items array
@@ -204,7 +208,8 @@ async def _search_rss(cfg: dict, query: str, limit: int, remote_only: bool) -> l
             r = await client.get(url, headers={**extra_headers, "Accept": "application/rss+xml, */*"}, timeout=15)
             r.raise_for_status()
             root = ET.fromstring(r.text)
-    except Exception:
+    except Exception as e:
+        log.warning("custom rss source %s fetch failed: %s", cfg.get("name"), e)
         return []
 
     channel = root.find("channel") or root

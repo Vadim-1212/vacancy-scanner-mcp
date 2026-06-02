@@ -1,15 +1,21 @@
 import asyncio
+import logging
 import os
 import re
 
 from sources import SEMAPHORE, get_client
 from models import Vacancy
 
+log = logging.getLogger(__name__)
+
 _TOKEN = os.getenv("HH_APP_TOKEN", "")
 _UA = os.getenv("HH_USER_AGENT", "VacancyScanner/1.0 (user@example.com)")
 _CLIENT_ID = os.getenv("HH_CLIENT_ID", "")
 _CLIENT_SECRET = os.getenv("HH_CLIENT_SECRET", "")
 _BASE = "https://api.hh.ru"
+
+if "user@example.com" in _UA:
+    log.warning("HH_USER_AGENT contains placeholder email — HH.ru will block requests. Set a real email.")
 
 # Mutable token (refreshed at runtime)
 _current_token: list[str] = [_TOKEN]
@@ -40,8 +46,8 @@ async def refresh_token() -> bool:
         if token:
             _current_token[0] = token
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("hh token refresh failed: %s", e)
     return False
 
 
@@ -89,7 +95,8 @@ async def _fetch_detail(vacancy_id: str) -> dict | None:
             r = await client.get(f"{_BASE}/vacancies/{vacancy_id}", headers=_headers(), timeout=10)
             r.raise_for_status()
             return r.json()
-    except Exception:
+    except Exception as e:
+        log.warning("hh detail fetch failed for %s: %s", vacancy_id, e)
         return None
 
 
@@ -106,7 +113,8 @@ async def search(query: str, limit: int = 100, remote_only: bool = False) -> lis
                 r = await client.get(f"{_BASE}/vacancies", params=params, headers=_headers(), timeout=15)
             r.raise_for_status()
             items = r.json().get("items", [])
-    except Exception:
+    except Exception as e:
+        log.warning("hh search failed: %s", e)
         return []
 
     detail_sem = asyncio.Semaphore(5)

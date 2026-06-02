@@ -1,8 +1,10 @@
+import logging
 import re
 
 from sources import SEMAPHORE, get_client
 from models import Vacancy
-from analytics import parse_salary_usd
+
+log = logging.getLogger(__name__)
 
 # Map common query terms to RemoteOK tag slugs
 _TAG_MAP = {
@@ -57,7 +59,8 @@ async def search(query: str, limit: int = 50, remote_only: bool = False) -> list
             r = await client.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
             r.raise_for_status()
             data = r.json()
-    except Exception:
+    except Exception as e:
+        log.warning("remoteok fetch failed: %s", e)
         return []
 
     # First item is metadata object, skip it

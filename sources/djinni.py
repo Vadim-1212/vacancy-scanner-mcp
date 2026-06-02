@@ -1,5 +1,8 @@
 """Djinni.co — Ukrainian/Eastern Europe IT job board. No auth for read."""
+import logging
 import re
+
+log = logging.getLogger(__name__)
 
 from sources import SEMAPHORE, get_client
 from models import Vacancy
@@ -35,7 +38,8 @@ async def search(query: str, limit: int = 50, remote_only: bool = False) -> list
                 )
                 r.raise_for_status()
                 data = r.json()
-        except Exception:
+        except Exception as e:
+            log.warning("djinni offset %d failed: %s", offset, e)
             break
 
         jobs = data.get("results", [])

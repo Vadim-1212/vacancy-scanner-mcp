@@ -1,5 +1,8 @@
 """Himalayas — remote job feed. No server-side search; filters client-side."""
+import logging
 import re
+
+log = logging.getLogger(__name__)
 
 from sources import SEMAPHORE, get_client
 from models import Vacancy
@@ -36,7 +39,8 @@ async def search(query: str, limit: int = 20, remote_only: bool = False) -> list
                 r = await client.get("https://himalayas.app/jobs/api", params=params, timeout=15)
                 r.raise_for_status()
                 jobs = r.json().get("jobs", [])
-        except Exception:
+        except Exception as e:
+            log.warning("himalayas page %d failed: %s", page_idx, e)
             break
 
         if not jobs:

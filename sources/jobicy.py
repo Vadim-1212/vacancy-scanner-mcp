@@ -1,6 +1,10 @@
+import logging
+
 from sources import SEMAPHORE, get_client
 from models import Vacancy
 from analytics import extract_skills, parse_salary_usd
+
+log = logging.getLogger(__name__)
 
 
 async def search(query: str, limit: int = 50, remote_only: bool = False) -> list[Vacancy]:
@@ -13,7 +17,8 @@ async def search(query: str, limit: int = 50, remote_only: bool = False) -> list
             r = await client.get("https://jobicy.com/api/v2/remote-jobs", params=params, timeout=15)
             r.raise_for_status()
             jobs = r.json().get("jobs", [])
-    except Exception:
+    except Exception as e:
+        log.warning("jobicy fetch failed: %s", e)
         return []
 
     results = []

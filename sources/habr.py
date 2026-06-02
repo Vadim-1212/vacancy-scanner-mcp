@@ -1,9 +1,13 @@
+import logging
+import re
 import xml.etree.ElementTree as ET
 from urllib.parse import quote
 
 from sources import SEMAPHORE, get_client
 from models import Vacancy
 from analytics import extract_skills, parse_salary_usd
+
+log = logging.getLogger(__name__)
 
 
 async def search(query: str, limit: int = 50, remote_only: bool = False) -> list[Vacancy]:
@@ -18,7 +22,8 @@ async def search(query: str, limit: int = 50, remote_only: bool = False) -> list
             r = await client.get(url, timeout=15, headers={"Accept": "application/rss+xml, application/xml, */*"})
             r.raise_for_status()
             root = ET.fromstring(r.text)
-    except Exception:
+    except Exception as e:
+        log.warning("habr fetch failed: %s", e)
         return []
 
     channel = root.find("channel")
@@ -31,10 +36,8 @@ async def search(query: str, limit: int = 50, remote_only: bool = False) -> list
         link = (item.findtext("link") or "").strip()
         desc = (item.findtext("description") or "").strip()
 
-        # Habr embeds salary in title: "Senior Python — 300 000 ₽"
         sal_text = None
         salary_usd = None
-        import re
         sal_match = re.search(r"([\d\s]+[₽$€]|от\s+[\d\s]+)", title + " " + desc)
         if sal_match:
             sal_text = sal_match.group(0).strip()

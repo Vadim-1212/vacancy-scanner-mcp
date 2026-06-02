@@ -1,11 +1,14 @@
 """Optional Adzuna source. Requires ADZUNA_APP_ID and ADZUNA_APP_KEY env vars.
 Free registration: https://developer.adzuna.com/signup
 """
+import logging
 import os
 
 from sources import SEMAPHORE, get_client
 from models import Vacancy
-from analytics import extract_skills, parse_salary_usd
+from analytics import extract_skills
+
+log = logging.getLogger(__name__)
 
 _APP_ID = os.getenv("ADZUNA_APP_ID", "")
 _APP_KEY = os.getenv("ADZUNA_APP_KEY", "")
@@ -45,7 +48,8 @@ async def search(
                 )
                 r.raise_for_status()
                 jobs = r.json().get("results", [])
-        except Exception:
+        except Exception as e:
+            log.warning("adzuna page %d failed: %s", page, e)
             break
 
         if not jobs:

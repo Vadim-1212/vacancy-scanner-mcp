@@ -1,7 +1,10 @@
 """TrudVsem.ru — Russian government open job portal. No auth required."""
+import logging
+
 from sources import SEMAPHORE, get_client
 from models import Vacancy
-from analytics import parse_salary_usd
+
+log = logging.getLogger(__name__)
 
 
 async def search(query: str, limit: int = 50, remote_only: bool = False) -> list[Vacancy]:
@@ -21,7 +24,8 @@ async def search(query: str, limit: int = 50, remote_only: bool = False) -> list
                 )
                 r.raise_for_status()
                 data = r.json()
-        except Exception:
+        except Exception as e:
+            log.warning("trudvsem page offset=%d failed: %s", offset, e)
             break
 
         raw = data.get("results", {}).get("vacancies", [])

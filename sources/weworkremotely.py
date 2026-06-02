@@ -1,6 +1,9 @@
 """WeWorkRemotely — RSS feed, no auth required."""
+import logging
 import re
 import xml.etree.ElementTree as ET
+
+log = logging.getLogger(__name__)
 
 from sources import SEMAPHORE, get_client
 from models import Vacancy
@@ -32,7 +35,8 @@ async def search(query: str, limit: int = 50, remote_only: bool = False) -> list
                 r = await client.get(feed_url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
                 r.raise_for_status()
                 root = ET.fromstring(r.text)
-        except Exception:
+        except Exception as e:
+            log.warning("weworkremotely feed %s failed: %s", feed_url, e)
             continue
 
         for item in root.findall("./channel/item"):

@@ -5,8 +5,11 @@ Multi-source job market intelligence: HH.ru, Himalayas, RemoteOK, Arbeitnow, Job
 Optional: Adzuna (global), JSearch (LinkedIn+Indeed+Google Jobs aggregator).
 """
 import asyncio
+import logging
 import sys
 import os
+
+logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
 
 # Add project root to path so imports work when run directly
 sys.path.insert(0, os.path.dirname(__file__))

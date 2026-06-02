@@ -2,11 +2,14 @@
 Requires JSEARCH_API_KEY from RapidAPI: https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch
 Free tier available, no credit card required.
 """
+import logging
 import os
 
 from sources import SEMAPHORE, get_client
 from models import Vacancy
-from analytics import extract_skills, parse_salary_usd
+from analytics import extract_skills
+
+log = logging.getLogger(__name__)
 
 _API_KEY = os.getenv("JSEARCH_API_KEY", "")
 
@@ -34,7 +37,8 @@ async def search(query: str, limit: int = 50, remote_only: bool = False) -> list
             )
             r.raise_for_status()
             jobs = r.json().get("data", [])
-    except Exception:
+    except Exception as e:
+        log.warning("jsearch fetch failed: %s", e)
         return []
 
     results = []

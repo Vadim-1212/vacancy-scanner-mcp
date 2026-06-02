@@ -148,8 +148,8 @@ def score_candidate(vacancy_text: str, skills: list[str], experience_years: int)
     if not required:
         return {"score_percent": 0, "matched": [], "gaps": [], "verdict": "Не удалось извлечь требования из текста."}
 
-    candidate = [s.lower() for s in skills]
-    matched = [s for s in required if any(s in c or c in s for c in candidate)]
+    candidate = {s.lower() for s in skills}
+    matched = [s for s in required if s in candidate]
     gaps = [s for s in required if s not in matched]
 
     score = len(matched) / len(required) * 100

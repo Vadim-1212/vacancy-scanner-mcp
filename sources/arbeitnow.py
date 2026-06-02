@@ -1,15 +1,10 @@
-import asyncio
+import logging
 
 from sources import SEMAPHORE, get_client
 from models import Vacancy
 from analytics import extract_skills
 
-_AI_KEYWORDS = {
-    "ai", "llm", "langchain", "langgraph", "generative", "nlp", "machine learning",
-    "automation", "agent", "rag", "ml", "data science", "deep learning",
-    "python", "typescript", "javascript", "backend", "frontend", "fullstack",
-    "devops", "engineer", "developer", "architect",
-}
+log = logging.getLogger(__name__)
 
 
 def _matches(job: dict, query: str) -> bool:
@@ -35,7 +30,8 @@ async def search(query: str, limit: int = 50, remote_only: bool = False) -> list
                 )
                 r.raise_for_status()
                 jobs = r.json().get("data", [])
-        except Exception:
+        except Exception as e:
+            log.warning("arbeitnow page %d failed: %s", page, e)
             break
 
         if not jobs:
