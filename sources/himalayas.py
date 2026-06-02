@@ -1,13 +1,36 @@
+"""Himalayas — remote job feed. No server-side search; filters client-side."""
+import re
+
 from sources import SEMAPHORE, get_client
 from models import Vacancy
+
+
+def _matches(job: dict, query: str) -> bool:
+    q_words = [w.lower() for w in re.split(r"\s+", query.strip()) if len(w) > 2]
+    if not q_words:
+        return True
+    title = (job.get("title") or "").lower()
+    cat_text = " ".join(
+        (c.get("name") or c.get("slug") or "") for c in (job.get("categories") or [])
+        if isinstance(c, dict)
+    ).lower()
+    full_text = title + " " + (job.get("excerpt") or "").lower() + " " + cat_text
+
+    # Title match on ANY word → strong signal
+    if any(w in title for w in q_words):
+        return True
+    # Body match requires MAJORITY of words (≥60%)
+    hits = sum(1 for w in q_words if w in full_text)
+    return hits >= max(1, round(len(q_words) * 0.6))
 
 
 async def search(query: str, limit: int = 20, remote_only: bool = False) -> list[Vacancy]:
     client = get_client()
     results = []
+    fetch_pages = max(3, (limit // 20) + 2)  # fetch extra pages for client-side filter
 
-    for page in range(0, min(limit, 60), 20):
-        params = {"search": query, "limit": 20, "offset": page}
+    for page_idx in range(fetch_pages):
+        params = {"limit": 20, "offset": page_idx * 20}
         try:
             async with SEMAPHORE:
                 r = await client.get("https://himalayas.app/jobs/api", params=params, timeout=15)
@@ -20,35 +43,41 @@ async def search(query: str, limit: int = 20, remote_only: bool = False) -> list
             break
 
         for j in jobs:
-            sal_min = j.get("annualSalaryMin") or j.get("salaryMin")
-            sal_max = j.get("annualSalaryMax") or j.get("salaryMax")
+            if not _matches(j, query):
+                continue
+
+            sal_min = j.get("minSalary") or j.get("annualSalaryMin")
+            sal_max = j.get("maxSalary") or j.get("annualSalaryMax")
             salary_usd = None
             salary_text = None
             if sal_min or sal_max:
                 vals = [x for x in [sal_min, sal_max] if x]
                 salary_usd = round(sum(vals) / len(vals))
-                salary_text = f"${sal_min or '?'}-${sal_max or '?'}"
-
-            company = j.get("company") or {}
-            company_name = company.get("name", "") if isinstance(company, dict) else str(company)
+                cur = j.get("currency", "USD")
+                salary_text = f"{cur} {sal_min or '?'}–{sal_max or '?'}"
 
             cats = j.get("categories") or []
-            skills = [c.get("slug", "").replace("-", " ") for c in cats if isinstance(c, dict)]
+            skills = [
+                (c.get("name") or c.get("slug", "")).lower().replace("-", " ")
+                for c in cats if isinstance(c, dict)
+            ]
+
+            url = j.get("applicationLink") or j.get("guid") or ""
 
             results.append(Vacancy(
                 title=j.get("title", ""),
-                company=company_name,
-                url=j.get("url", j.get("applicationUrl", "")),
+                company=j.get("companyName") or j.get("companySlug", ""),
+                url=url,
                 source="himalayas",
                 remote=True,
                 salary_text=salary_text,
                 salary_usd=salary_usd,
                 skills=skills,
-                description=j.get("excerpt", "")[:500],
+                description=(j.get("excerpt") or "")[:500],
                 location="Remote",
             ))
 
-        if len(results) >= limit:
-            break
+            if len(results) >= limit:
+                return results
 
-    return results[:limit]
+    return results
