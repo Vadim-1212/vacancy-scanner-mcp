@@ -27,7 +27,6 @@ import sources.jsearch as _jsearch
 import sources.custom as _custom
 import sources.trudvsem as _trudvsem
 import sources.weworkremotely as _weworkremotely
-import sources.djinni as _djinni
 
 from analytics import build_skill_report, build_salary_report, score_candidate as _score_candidate, dedup
 from sources import close_client
@@ -53,10 +52,9 @@ _SOURCE_MAP = {
     "jsearch": _jsearch,
     "trudvsem": _trudvsem,
     "weworkremotely": _weworkremotely,
-    "djinni": _djinni,
 }
 
-_DEFAULT_SOURCES = ["hh", "himalayas", "remoteok", "arbeitnow", "jobicy", "habr", "trudvsem", "weworkremotely", "djinni"]
+_DEFAULT_SOURCES = ["hh", "himalayas", "remoteok", "arbeitnow", "jobicy", "habr", "trudvsem", "weworkremotely"]
 
 
 def _all_sources() -> list[str]:
@@ -321,7 +319,6 @@ def list_sources() -> dict:
             "habr":           {"desc": "Habr Career RSS — Russia IT",           "auth": "none",    "configured": True},
             "trudvsem":       {"desc": "TrudVsem.ru — Russia govt portal",      "auth": "none",    "configured": True},
             "weworkremotely": {"desc": "WeWorkRemotely — Remote global RSS",    "auth": "none",    "configured": True},
-            "djinni":         {"desc": "Djinni.co — Ukraine/Eastern Europe IT", "auth": "none",    "configured": True},
             "adzuna":         {"desc": "Adzuna — US/EU/AU/CA (optional)",       "auth": "api_key", "configured": bool(_adzuna._APP_ID)},
             "jsearch":        {"desc": "JSearch — LinkedIn+Indeed+Google Jobs", "auth": "api_key", "configured": bool(_jsearch._API_KEY)},
         },
@@ -334,7 +331,7 @@ def list_sources() -> dict:
             }
             for name, cfg in custom.items()
         },
-        "total": 11 + len(custom),
+        "total": 10 + len(custom),
     }
 
 
@@ -491,7 +488,6 @@ _SOURCE_PROBES: dict[str, tuple[str, dict, dict]] = {
     "habr":      ("https://career.habr.com/vacancies/rss",           {"q": "python"},                   {"Accept": "application/rss+xml"}),
     "trudvsem":       ("https://opendata.trudvsem.ru/api/v1/vacancies",          {"limit": 1, "text": "python"},   {}),
     "weworkremotely": ("https://weworkremotely.com/remote-jobs.rss",              {},                               {"User-Agent": "Mozilla/5.0"}),
-    "djinni":         ("https://djinni.co/api/jobs/",                             {"limit": 1},                     {}),
     "adzuna":    ("https://api.adzuna.com/v1/api/jobs/us/search/1",  {"app_id": _adzuna._APP_ID or "x", "app_key": _adzuna._APP_KEY or "x", "what": "python", "results_per_page": 1}, {}),
     "jsearch":   ("https://jsearch.p.rapidapi.com/search",           {"query": "python", "num_pages": "1"}, {"X-RapidAPI-Key": _jsearch._API_KEY or "", "X-RapidAPI-Host": "jsearch.p.rapidapi.com"}),
 }

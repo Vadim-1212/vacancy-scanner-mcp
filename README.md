@@ -60,7 +60,6 @@ Add to your `mcp.json` / `claude_desktop_config.json`:
 | Habr Career RSS | None | Russia IT |
 | TrudVsem.ru | None | Russia (government portal) |
 | WeWorkRemotely | None | Remote global |
-| Djinni.co | None | Ukraine / Eastern Europe IT |
 | Adzuna | Free key ([developer.adzuna.com](https://developer.adzuna.com/signup)) | US / EU / AU |
 | JSearch | Free key ([RapidAPI](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch)) | LinkedIn + Indeed + Google Jobs |
 
