@@ -268,6 +268,208 @@ async def top_hiring_companies(
     }
 
 
+# ─── Tool 6: check_sources ─────────────────────────────────────────────────────
+
+# Minimal probes per source: (url, params, extra_headers)
+_SOURCE_PROBES: dict[str, tuple[str, dict, dict]] = {
+    "hh":        ("https://api.hh.ru/vacancies",                    {"text": "python", "per_page": 1}, {}),
+    "himalayas": ("https://himalayas.app/jobs/api",                  {"search": "python", "limit": 1}, {}),
+    "remoteok":  ("https://remoteok.com/api",                        {"tags": "python"},                {"User-Agent": "Mozilla/5.0"}),
+    "arbeitnow": ("https://www.arbeitnow.com/api/job-board-api",     {"page": 1},                       {}),
+    "jobicy":    ("https://jobicy.com/api/v2/remote-jobs",           {"count": 1, "tag": "python"},     {}),
+    "habr":      ("https://career.habr.com/vacancies/rss",           {"q": "python"},                   {"Accept": "application/rss+xml"}),
+    "adzuna":    ("https://api.adzuna.com/v1/api/jobs/us/search/1",  {"app_id": _adzuna._APP_ID or "x", "app_key": _adzuna._APP_KEY or "x", "what": "python", "results_per_page": 1}, {}),
+    "jsearch":   ("https://jsearch.p.rapidapi.com/search",           {"query": "python", "num_pages": "1"}, {"X-RapidAPI-Key": _jsearch._API_KEY or "", "X-RapidAPI-Host": "jsearch.p.rapidapi.com"}),
+}
+
+
+@mcp.tool()
+async def check_sources() -> dict:
+    """Check connectivity and health of all configured job sources.
+
+    Tests each source with a minimal request and reports response time,
+    HTTP status, and whether credentials are present.
+    Use this before running large searches to diagnose issues.
+
+    Returns:
+        Per-source status (ok/error/timeout/no_key), response time in ms,
+        credential status, and an overall summary.
+    """
+    import time
+    from sources import get_client, HEADERS as _BASE_HEADERS
+
+    client = get_client()
+
+    async def probe(name: str) -> tuple[str, dict]:
+        url, params, extra_headers = _SOURCE_PROBES[name]
+
+        # Skip optional sources if no key
+        if name == "adzuna" and not _adzuna._APP_ID:
+            return name, {"status": "no_key", "note": "Set ADZUNA_APP_ID + ADZUNA_APP_KEY in env"}
+        if name == "jsearch" and not _jsearch._API_KEY:
+            return name, {"status": "no_key", "note": "Set JSEARCH_API_KEY in env"}
+
+        # HH needs auth headers
+        req_headers = {**_BASE_HEADERS, **extra_headers}
+        if name == "hh":
+            req_headers.update(_hh._headers())
+
+        t0 = time.monotonic()
+        try:
+            async with asyncio.timeout(10):
+                r = await client.get(url, params=params, headers=req_headers, timeout=10)
+            elapsed = round((time.monotonic() - t0) * 1000)
+            ok = r.status_code < 400
+            return name, {
+                "status": "ok" if ok else "error",
+                "http_status": r.status_code,
+                "response_ms": elapsed,
+                "error": r.text[:120] if not ok else None,
+            }
+        except asyncio.TimeoutError:
+            return name, {"status": "timeout", "response_ms": 10_000, "error": "no response in 10s"}
+        except Exception as e:
+            return name, {"status": "error", "response_ms": None, "error": str(e)[:120]}
+
+    outcomes = await asyncio.gather(*[probe(name) for name in _SOURCE_PROBES])
+    sources_result = dict(outcomes)
+
+    ok_count = sum(1 for v in sources_result.values() if v["status"] == "ok")
+    total = len(sources_result)
+
+    return {
+        "sources": sources_result,
+        "summary": f"{ok_count}/{total} sources healthy",
+        "credentials": {
+            "hh": f"token {_hh.token_preview()}, can_refresh={_hh.has_credentials()}",
+            "adzuna": "configured" if _adzuna._APP_ID else "not set (optional — global market)",
+            "jsearch": "configured" if _jsearch._API_KEY else "not set (optional — LinkedIn/Indeed/Google Jobs)",
+        },
+    }
+
+
+# ─── Tool 7: refresh_tokens ────────────────────────────────────────────────────
+
+@mcp.tool()
+async def refresh_tokens() -> dict:
+    """Refresh and validate API credentials for all sources.
+
+    HH.ru: automatically fetches a new token via client_credentials (no user action needed).
+    Adzuna / JSearch: validates existing key with a live test request.
+    No-auth sources (Himalayas, RemoteOK, etc.): confirms connectivity.
+
+    Use this when searches return empty results or sources show errors in check_sources.
+
+    Returns:
+        Per-source credential status and whether refresh succeeded.
+    """
+    from sources import get_client
+
+    client = get_client()
+    results: dict[str, dict] = {}
+
+    # ── HH.ru: auto-refresh token ──────────────────────────────────────────────
+    if _hh.has_credentials():
+        ok = await _hh.refresh_token()
+        results["hh"] = {
+            "status": "refreshed" if ok else "refresh_failed",
+            "token": _hh.token_preview(),
+            "note": "New token active" if ok else "Check HH_CLIENT_ID / HH_CLIENT_SECRET",
+        }
+    elif _hh.token_preview() != "not set":
+        results["hh"] = {
+            "status": "static_token",
+            "token": _hh.token_preview(),
+            "note": "Token set but no client credentials — cannot auto-refresh. "
+                    "Add HH_CLIENT_ID + HH_CLIENT_SECRET to enable auto-refresh.",
+        }
+    else:
+        results["hh"] = {
+            "status": "no_credentials",
+            "note": "Set HH_APP_TOKEN (and HH_CLIENT_ID + HH_CLIENT_SECRET for auto-refresh) in env",
+        }
+
+    # ── Adzuna: validate key ────────────────────────────────────────────────────
+    if _adzuna._APP_ID and _adzuna._APP_KEY:
+        try:
+            async with asyncio.timeout(10):
+                r = await client.get(
+                    "https://api.adzuna.com/v1/api/jobs/us/search/1",
+                    params={"app_id": _adzuna._APP_ID, "app_key": _adzuna._APP_KEY,
+                            "what": "engineer", "results_per_page": 1},
+                    timeout=10,
+                )
+            results["adzuna"] = {
+                "status": "ok" if r.status_code == 200 else "invalid",
+                "http_status": r.status_code,
+                "note": "Key valid" if r.status_code == 200 else r.text[:100],
+            }
+        except Exception as e:
+            results["adzuna"] = {"status": "error", "note": str(e)[:100]}
+    else:
+        results["adzuna"] = {
+            "status": "no_key",
+            "note": "Optional. Register free at https://developer.adzuna.com/signup",
+        }
+
+    # ── JSearch: validate key ───────────────────────────────────────────────────
+    if _jsearch._API_KEY:
+        try:
+            async with asyncio.timeout(10):
+                r = await client.get(
+                    "https://jsearch.p.rapidapi.com/search",
+                    params={"query": "engineer", "num_pages": "1"},
+                    headers={"X-RapidAPI-Key": _jsearch._API_KEY,
+                             "X-RapidAPI-Host": "jsearch.p.rapidapi.com"},
+                    timeout=10,
+                )
+            results["jsearch"] = {
+                "status": "ok" if r.status_code == 200 else "invalid",
+                "http_status": r.status_code,
+                "note": "Key valid" if r.status_code == 200 else r.text[:100],
+            }
+        except Exception as e:
+            results["jsearch"] = {"status": "error", "note": str(e)[:100]}
+    else:
+        results["jsearch"] = {
+            "status": "no_key",
+            "note": "Optional. Free tier at https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch",
+        }
+
+    # ── No-auth sources: quick connectivity ping ────────────────────────────────
+    no_auth = {
+        "himalayas": ("https://himalayas.app/jobs/api", {"search": "python", "limit": 1}),
+        "remoteok":  ("https://remoteok.com/api",       {"tags": "python"}),
+        "arbeitnow": ("https://www.arbeitnow.com/api/job-board-api", {"page": 1}),
+        "jobicy":    ("https://jobicy.com/api/v2/remote-jobs", {"count": 1, "tag": "python"}),
+        "habr":      ("https://career.habr.com/vacancies/rss", {"q": "python"}),
+    }
+
+    async def ping(name: str, url: str, params: dict) -> tuple[str, dict]:
+        try:
+            async with asyncio.timeout(8):
+                r = await client.get(url, params=params, timeout=8)
+            return name, {"status": "ok" if r.status_code < 400 else "error",
+                          "http_status": r.status_code, "note": "No auth needed"}
+        except asyncio.TimeoutError:
+            return name, {"status": "timeout", "note": "No response in 8s"}
+        except Exception as e:
+            return name, {"status": "error", "note": str(e)[:80]}
+
+    pings = await asyncio.gather(*[ping(n, u, p) for n, (u, p) in no_auth.items()])
+    results.update(dict(pings))
+
+    ok = sum(1 for v in results.values() if v["status"] in ("ok", "refreshed", "static_token"))
+    return {
+        "credentials": results,
+        "summary": f"{ok}/{len(results)} sources ready",
+        "action_needed": [
+            k for k, v in results.items()
+            if v["status"] in ("no_key", "no_credentials", "invalid", "refresh_failed")
+        ],
+    }
+
+
 # ─── Entrypoint ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

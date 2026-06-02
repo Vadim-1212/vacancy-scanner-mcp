@@ -16,6 +16,10 @@ _current_token: list[str] = [_TOKEN]
 
 
 async def _refresh_token() -> bool:
+    return await refresh_token()
+
+
+async def refresh_token() -> bool:
     """Fetch a new app token via client_credentials. Returns True on success."""
     if not _CLIENT_ID or not _CLIENT_SECRET:
         return False
@@ -39,6 +43,15 @@ async def _refresh_token() -> bool:
     except Exception:
         pass
     return False
+
+
+def token_preview() -> str:
+    t = _current_token[0]
+    return f"{t[:8]}...{t[-4:]}" if len(t) > 12 else ("set" if t else "not set")
+
+
+def has_credentials() -> bool:
+    return bool(_CLIENT_ID and _CLIENT_SECRET)
 
 
 def _headers() -> dict:
