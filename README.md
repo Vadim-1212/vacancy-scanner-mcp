@@ -13,15 +13,20 @@ Aggregates vacancies from **9 sources out of the box** — HH.ru, Himalayas, Rem
 | `salary_benchmark` | Salary ranges (min/median/max/p25/p75) | "What does EU pay for DevOps?" |
 | `score_candidate` | Match candidate skills against vacancy text | "Does this resume fit the role?" |
 | `top_hiring_companies` | Who is hiring most for a role right now | "Who is actively hiring Go devs?" |
+| `list_sources` | Show all configured sources and their status | — |
+| `add_source` | Add any JSON API or RSS job board dynamically | — |
+| `remove_source` | Remove a custom source by name | — |
+| `check_sources` | Ping all sources and report health | — |
+| `refresh_tokens` | Re-fetch HH.ru OAuth token on demand | — |
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/vacancy-scanner-mcp
+git clone https://github.com/Vadim-1212/vacancy-scanner-mcp
 cd vacancy-scanner-mcp
 pip install -r requirements.txt
-cp .env.example .env
-# Edit .env — only HH_APP_TOKEN needed for Russian market
+# Env vars are set in mcp.json (see below), not via .env file
+# Copy .env.example for reference on what variables exist
 ```
 
 Add to your `mcp.json` / `claude_desktop_config.json`:

@@ -71,7 +71,8 @@ def _parse_salary(d: dict) -> tuple[str | None, float | None]:
     if not lo and not hi:
         return None, None
     text = f"{lo or ''}-{hi or ''} {cur}".strip("-").strip()
-    avg = ((lo or 0) + (hi or lo or 0)) / (2 if lo and hi else 1)
+    vals = [x for x in (lo, hi) if x]
+    avg = sum(vals) / len(vals) if vals else 0
     usd = None
     if avg:
         if cur == "RUB":

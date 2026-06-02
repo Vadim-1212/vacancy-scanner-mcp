@@ -51,10 +51,15 @@ async def search(
         if not jobs:
             break
 
+        # Adzuna salaries are in local currency; approximate to USD (annual)
+        _FX = {"us": 1.0, "gb": 1.27, "de": 1.08, "fr": 1.08, "au": 0.65, "ca": 0.74}
+        fx = _FX.get(country, 1.0)
         for j in jobs:
-            sal = j.get("salary_min") or j.get("salary_max")
-            salary_usd = round(float(sal)) if sal else None
-            salary_text = f"£{j.get('salary_min', '')}-{j.get('salary_max', '')}" if sal else None
+            sal_min = j.get("salary_min")
+            sal_max = j.get("salary_max")
+            sal_vals = [x for x in (sal_min, sal_max) if x]
+            salary_usd = round(sum(sal_vals) / len(sal_vals) * fx) if sal_vals else None
+            salary_text = f"{sal_min or '?'}–{sal_max or '?'}" if sal_vals else None
             desc = j.get("description", "")
             skills = extract_skills(desc)
 

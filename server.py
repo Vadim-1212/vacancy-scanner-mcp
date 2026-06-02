@@ -129,7 +129,8 @@ async def search_vacancies(
 
     Args:
         query: Job title or keywords, e.g. "Senior Python Engineer" or "AI automation developer".
-        sources: Sources to search. Options: hh, himalayas, remoteok, arbeitnow, jobicy, habr, adzuna, jsearch.
+        sources: Sources to search. Options: hh, himalayas, remoteok, arbeitnow, jobicy, habr,
+                 trudvsem, weworkremotely, djinni, adzuna (key required), jsearch (key required).
                  Defaults to all configured sources.
         limit: Maximum number of results to return (10–200).
         remote_only: If True, filter for remote-only positions.

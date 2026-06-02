@@ -35,4 +35,4 @@ class SalaryReport(BaseModel):
     percentile_25: Optional[float] = None
     percentile_75: Optional[float] = None
     sample_size: int = 0
-    sources: list[str] = []
+    sources: list[str] = Field(default_factory=list)
